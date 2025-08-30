@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>제주도 버스 실시간 위치</title>
+    <title>제주도 버스 실시간 위치 & 사용자 위치</title>
     <style>
         #map {
             width: 100%;
@@ -12,7 +12,7 @@
     <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=YOUR_KAKAO_JS_KEY"></script>
 </head>
 <body>
-    <h2>제주도 전체 버스 실시간 위치</h2>
+    <h2>제주도 버스 실시간 위치 & 내 위치</h2>
     <div id="map"></div>
 
     <script>
@@ -24,13 +24,44 @@
         var map = new kakao.maps.Map(mapContainer, mapOption);
 
         var busMarkers = [];
+        var userMarker = null;
+
+        // 사용자 위치 표시
+        function showUserLocation(position) {
+            var lat = position.coords.latitude;
+            var lng = position.coords.longitude;
+
+            if (userMarker) {
+                userMarker.setPosition(new kakao.maps.LatLng(lat, lng));
+            } else {
+                userMarker = new kakao.maps.Marker({
+                    map: map,
+                    position: new kakao.maps.LatLng(lat, lng),
+                    title: "내 위치",
+                    image: new kakao.maps.MarkerImage(
+                        'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
+                            `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20">
+                                <circle cx="10" cy="10" r="8" fill="blue" stroke="black" stroke-width="1"/>
+                            </svg>`
+                        ),
+                        new kakao.maps.Size(20,20),
+                        {offset: new kakao.maps.Point(10,10)}
+                    )
+                });
+            }
+        }
+
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(showUserLocation);
+        } else {
+            alert("위치 정보 사용 불가");
+        }
 
         // 버스 데이터 가져오기
         async function fetchAllBuses() {
             const serviceKey = 'GcNpG93UDg3EHP+ohOowQjNCdDfacM10oBBDi1ne1xUAmzFAoCLA/s7rn4W34hZw6lCOHJBl3tRj0sgbFflQ4w==';
             
-            // 제주도 전체 노선 ID 예시 배열 (실제 사용 시 정확한 노선 ID 필요)
-            const routeIds = ['100100003', '100100004', '100100005']; 
+            const routeIds = ['100100003', '100100004', '100100005']; // 제주도 예시 노선 ID
 
             // 기존 마커 제거
             busMarkers.forEach(marker => marker.setMap(null));
@@ -50,7 +81,7 @@
                         const lng = buses[i].getElementsByTagName('gpsX')[0].textContent;
                         const busNo = buses[i].getElementsByTagName('plainNo')[0].textContent;
 
-                        // 직사각형 모양의 커스텀 마커 생성
+                        // 직사각형 마커
                         var marker = new kakao.maps.Marker({
                             map: map,
                             position: new kakao.maps.LatLng(lat, lng),
@@ -66,13 +97,22 @@
                             )
                         });
 
+                        // 인포윈도우
                         var infowindow = new kakao.maps.InfoWindow({
                             content: `<div style="padding:5px;">버스 번호: ${busNo}</div>`
                         });
-
                         kakao.maps.event.addListener(marker, 'click', function() {
                             infowindow.open(map, marker);
                         });
+
+                        // 사용자 위치와 거리 계산
+                        if (userMarker) {
+                            var distance = kakao.maps.services.Coords.distance(
+                                new kakao.maps.LatLng(lat, lng),
+                                userMarker.getPosition()
+                            );
+                            console.log(`버스 ${busNo}와 사용자 거리: ${Math.round(distance)}m`);
+                        }
 
                         busMarkers.push(marker);
                     }
