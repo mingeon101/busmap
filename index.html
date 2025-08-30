@@ -2,129 +2,86 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>제주도 버스 실시간 위치 & 사용자 위치</title>
+    <title>제주도 실시간 버스 시각화 (Leaflet)</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
     <style>
-        #map {
-            width: 100%;
-            height: 600px;
-        }
+        #map { width: 100%; height: 700px; }
     </style>
-    <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey=YOUR_KAKAO_JS_KEY"></script>
 </head>
 <body>
-    <h2>제주도 버스 실시간 위치 & 내 위치</h2>
+    <h2>제주도 실시간 버스 시각화</h2>
     <div id="map"></div>
 
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script>
-        var mapContainer = document.getElementById('map'),
-            mapOption = {
-                center: new kakao.maps.LatLng(33.4996, 126.5312),
-                level: 10
-            };
-        var map = new kakao.maps.Map(mapContainer, mapOption);
+        // 지도 생성
+        var map = L.map('map').setView([33.4996, 126.5312], 11);
+
+        // OSM 타일
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
 
         var busMarkers = [];
-        var userMarker = null;
+        var routeColors = {}; // 노선별 색상
 
-        // 사용자 위치 표시
-        function showUserLocation(position) {
-            var lat = position.coords.latitude;
-            var lng = position.coords.longitude;
-
-            if (userMarker) {
-                userMarker.setPosition(new kakao.maps.LatLng(lat, lng));
-            } else {
-                userMarker = new kakao.maps.Marker({
-                    map: map,
-                    position: new kakao.maps.LatLng(lat, lng),
-                    title: "내 위치",
-                    image: new kakao.maps.MarkerImage(
-                        'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
-                            `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20">
-                                <circle cx="10" cy="10" r="8" fill="blue" stroke="black" stroke-width="1"/>
-                            </svg>`
-                        ),
-                        new kakao.maps.Size(20,20),
-                        {offset: new kakao.maps.Point(10,10)}
-                    )
-                });
-            }
+        // 랜덤 색상 생성
+        function getRandomColor() {
+            return '#' + Math.floor(Math.random()*16777215).toString(16);
         }
 
-        if (navigator.geolocation) {
-            navigator.geolocation.watchPosition(showUserLocation);
-        } else {
-            alert("위치 정보 사용 불가");
-        }
-
-        // 버스 데이터 가져오기
         async function fetchAllBuses() {
             const serviceKey = 'GcNpG93UDg3EHP+ohOowQjNCdDfacM10oBBDi1ne1xUAmzFAoCLA/s7rn4W34hZw6lCOHJBl3tRj0sgbFflQ4w==';
-            
-            const routeIds = ['100100003', '100100004', '100100005']; // 제주도 예시 노선 ID
+
+            // 제주도 모든 노선 ID (예시) → 실제는 정식 노선 ID 리스트로 변경 가능
+            const routeIds = ['100100003','100100004','100100005','100100006'];
 
             // 기존 마커 제거
-            busMarkers.forEach(marker => marker.setMap(null));
+            busMarkers.forEach(marker => map.removeLayer(marker));
             busMarkers = [];
 
             for (let routeId of routeIds) {
+                // 노선별 색상 할당
+                if (!routeColors[routeId]) routeColors[routeId] = getRandomColor();
+
                 const url = `http://ws.bus.go.kr/api/rest/buspos/getBusPosByRtid?ServiceKey=${encodeURIComponent(serviceKey)}&busRouteId=${routeId}`;
                 try {
                     const response = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`);
                     const data = await response.json();
                     const parser = new DOMParser();
-                    const xmlDoc = parser.parseFromString(data.contents, "application/xml");
+                    const xmlDoc = parser.parseFromString(data.contents,"application/xml");
                     const buses = xmlDoc.getElementsByTagName('bus');
 
                     for (let i = 0; i < buses.length; i++) {
-                        const lat = buses[i].getElementsByTagName('gpsY')[0].textContent;
-                        const lng = buses[i].getElementsByTagName('gpsX')[0].textContent;
+                        const lat = parseFloat(buses[i].getElementsByTagName('gpsY')[0].textContent);
+                        const lng = parseFloat(buses[i].getElementsByTagName('gpsX')[0].textContent);
                         const busNo = buses[i].getElementsByTagName('plainNo')[0].textContent;
 
-                        // 직사각형 마커
-                        var marker = new kakao.maps.Marker({
-                            map: map,
-                            position: new kakao.maps.LatLng(lat, lng),
-                            title: busNo,
-                            image: new kakao.maps.MarkerImage(
-                                'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
-                                    `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="10">
-                                        <rect width="20" height="10" fill="red" stroke="black" stroke-width="1"/>
-                                    </svg>`
-                                ),
-                                new kakao.maps.Size(20,10),
-                                {offset: new kakao.maps.Point(10,5)}
-                            )
-                        });
-
-                        // 인포윈도우
-                        var infowindow = new kakao.maps.InfoWindow({
-                            content: `<div style="padding:5px;">버스 번호: ${busNo}</div>`
-                        });
-                        kakao.maps.event.addListener(marker, 'click', function() {
-                            infowindow.open(map, marker);
-                        });
-
-                        // 사용자 위치와 거리 계산
-                        if (userMarker) {
-                            var distance = kakao.maps.services.Coords.distance(
-                                new kakao.maps.LatLng(lat, lng),
-                                userMarker.getPosition()
-                            );
-                            console.log(`버스 ${busNo}와 사용자 거리: ${Math.round(distance)}m`);
-                        }
+                        // 직사각형 마커 생성
+                        const marker = L.rectangle(
+                            [[lat-0.0002, lng-0.0005],[lat+0.0002, lng+0.0005]],
+                            {color: routeColors[routeId], weight:1, fillOpacity:0.7}
+                        ).addTo(map).bindPopup(`<b>노선:</b> ${routeId}<br><b>버스 번호:</b> ${busNo}`);
 
                         busMarkers.push(marker);
                     }
 
                 } catch (error) {
-                    console.error('버스 정보 로딩 실패:', error);
+                    console.error(`노선 ${routeId} 버스 로딩 실패:`, error);
                 }
             }
         }
 
+        // 초기 로드
         fetchAllBuses();
-        setInterval(fetchAllBuses, 10000); // 10초마다 갱신
+        // 10초마다 갱신
+        setInterval(fetchAllBuses, 10000);
+
+        // 줌/이동 시 마커 최적화
+        map.on('zoomend moveend', () => {
+            // 현재는 간단히 모든 마커 표시 → 필요시 cluster plugin 적용 가능
+        });
+
     </script>
 </body>
 </html>
